@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 
 // 🔴 حط بيانات Supabase بتاعتك هنا 🔴
 const supabaseUrl = 'https://gsuntpgcmthruapyhidd.supabase.co';
-const supabaseKey = 'حط_المفتاح_بتاعك_هنا';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdzdW50cGdjbXRocnVhcHloaWRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE4Mzc2ODQsImV4cCI6MjEwNzQxMzY4NH0.IK3kVIwVtsXjFGJtZPejD6gGj47RKN8-1E-c6ThIDHQ';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default function NaghamApp() {
