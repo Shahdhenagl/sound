@@ -117,8 +117,10 @@ function MainApp({ setSession }) {
   const playerRef = useRef(null);
   const playerHostRef = useRef(null);
   const nextSongRef = useRef(null);
+  const previousSongRef = useRef(null);
   const [youtubeApiReady, setYoutubeApiReady] = useState(false);
   const [playerReady, setPlayerReady] = useState(false);
+  const pendingAutoplayRef = useRef(false);
 
   // تحميل YouTube IFrame Player API مرة واحدة
   useEffect(() => {
@@ -191,8 +193,14 @@ function MainApp({ setSession }) {
       console.error('رابط YouTube غير صالح:', currentSong.src);
       return;
     }
-    if (isPlaying) playerRef.current.loadVideoById(videoId);
-    else playerRef.current.cueVideoById(videoId);
+    // الأغنية التي اختارها المستخدم أو الأغنية التالية تُحمّل مع التشغيل مباشرة.
+    // أول أغنية عند فتح الصفحة تُجهّز فقط حتى لا نحاول تشغيل الصوت تلقائيًا دون تفاعل.
+    if (pendingAutoplayRef.current) {
+      playerRef.current.loadVideoById({ videoId });
+      pendingAutoplayRef.current = false;
+    } else {
+      playerRef.current.cueVideoById({ videoId });
+    }
     setCurrentTime(0);
     setProgress(0);
   }, [currentSong?.src, playerReady]);
@@ -237,6 +245,8 @@ function MainApp({ setSession }) {
   });
 
   const selectSong = (song) => {
+    // تمييز التغيير على أنه اختيار مباشر؛ يسمح بتشغيل الأغنية الجديدة فورًا.
+    pendingAutoplayRef.current = true;
     setCurrentSong(song);
     setIsPlaying(true);
     setCurrentTime(0);
@@ -267,7 +277,37 @@ function MainApp({ setSession }) {
 
   useEffect(() => {
     nextSongRef.current = playNext;
+    previousSongRef.current = playPrevious;
   });
+
+  // بيانات وأوامر شاشة القفل: دعم إضافي حسب المتصفح، لكن YouTube قد لا يسمح باستمرار الصوت بالخلفية.
+  useEffect(() => {
+    if (!('mediaSession' in navigator) || !currentSong) return;
+
+    try {
+      if ('MediaMetadata' in window) {
+        navigator.mediaSession.metadata = new window.MediaMetadata({
+          title: currentSong.title || 'نَغَم',
+          artist: currentSong.artist || 'غير معروف',
+          album: 'منصة نَغَم'
+        });
+      }
+      navigator.mediaSession.setActionHandler('play', () => playerRef.current?.playVideo?.());
+      navigator.mediaSession.setActionHandler('pause', () => playerRef.current?.pauseVideo?.());
+      navigator.mediaSession.setActionHandler('previoustrack', () => previousSongRef.current?.());
+      navigator.mediaSession.setActionHandler('nexttrack', () => nextSongRef.current?.());
+    } catch (error) {
+      console.warn('Media Session غير مدعوم بالكامل في هذا المتصفح:', error);
+    }
+
+    return () => {
+      try {
+        ['play', 'pause', 'previoustrack', 'nexttrack'].forEach(action => {
+          navigator.mediaSession.setActionHandler(action, null);
+        });
+      } catch {}
+    };
+  }, [currentSong?.id, playerReady]);
 
   const handleSeekClick = (e) => {
     const player = playerRef.current;
@@ -499,6 +539,13 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // تسجيل Service Worker لتفعيل تجربة PWA والتثبيت على الشاشة الرئيسية.
+    if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
+      navigator.serviceWorker.register('/sw.js').catch(error => {
+        console.warn('تعذر تسجيل Service Worker:', error);
+      });
+    }
+
     // جلب الكود من المتصفح لو مسجل من قبل
     const savedCode = localStorage.getItem('nagham_access_code');
     if (savedCode) {
