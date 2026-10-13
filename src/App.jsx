@@ -1,12 +1,93 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Pause, SkipForward, SkipBack, Volume2, Search, Plus, AudioLines, Heart, Sun, Moon, Music, X, Mic2, Radio, Book } from 'lucide-react';
+import { Play, Pause, SkipForward, SkipBack, Volume2, Search, Plus, AudioLines, Heart, Sun, Moon, Music, X, Mic2, Radio, Book, LogOut, Mail, Lock } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
+import ReactPlayer from 'react-player';
 
+// بيانات الربط بـ Supabase
 const supabaseUrl = 'https://gsuntpgcmthruapyhidd.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdzdW50cGdjbXRocnVhcHloaWRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE4Mzc2ODQsImV4cCI6MjEwNzQxMzY4NH0.IK3kVIwVtsXjFGJtZPejD6gGj47RKN8-1E-c6ThIDHQ';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-export default function NaghamApp() {
+// ==========================================
+// 1. واجهة تسجيل الدخول وإنشاء الحساب
+// ==========================================
+function AuthScreen({ setSession }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isLogin, setIsLogin] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+
+  const handleAuth = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setErrorMsg('');
+
+    try {
+      if (isLogin) {
+        // تسجيل دخول
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+      } else {
+        // حساب جديد
+        const { data, error } = await supabase.auth.signUp({ email, password });
+        if (error) throw error;
+        alert('تم إنشاء الحساب بنجاح! يمكنك الآن تسجيل الدخول.');
+        setIsLogin(true);
+      }
+    } catch (error) {
+      setErrorMsg(error.message === 'Invalid login credentials' ? 'البريد أو كلمة المرور غير صحيحة' : error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div dir="rtl" className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4 transition-colors">
+      <div className="bg-white dark:bg-gray-800 p-8 rounded-3xl shadow-xl w-full max-w-md border border-gray-100 dark:border-gray-700">
+        <div className="flex justify-center mb-6">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg">
+            <AudioLines className="w-10 h-10 text-white" />
+          </div>
+        </div>
+        <h2 className="text-3xl font-extrabold text-center mb-8 dark:text-white bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">منصة نَغَم</h2>
+        
+        {errorMsg && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-4 border border-red-200">{errorMsg}</div>}
+
+        <form onSubmit={handleAuth} className="space-y-5">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">البريد الإلكتروني</label>
+            <div className="relative">
+              <Mail className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input required type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl pr-10 pl-4 py-3 outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white" dir="ltr" placeholder="test@nagham.com" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">كلمة المرور</label>
+            <div className="relative">
+              <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input required type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl pr-10 pl-4 py-3 outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white" dir="ltr" placeholder="••••••••" minLength={6} />
+            </div>
+          </div>
+          <button type="submit" disabled={loading} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition-all shadow-md disabled:opacity-50">
+            {loading ? 'جاري التحميل...' : (isLogin ? 'دخول' : 'إنشاء حساب جديد')}
+          </button>
+        </form>
+
+        <div className="mt-6 text-center">
+          <button onClick={() => setIsLogin(!isLogin)} className="text-indigo-600 dark:text-indigo-400 font-medium hover:underline">
+            {isLogin ? 'لا تملك حساباً؟ سجل الآن' : 'لديك حساب بالفعل؟ سجل دخولك'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ==========================================
+// 2. واجهة التطبيق الرئيسية (تظهر بعد الدخول)
+// ==========================================
+function MainApp() {
   const [activeTab, setActiveTab] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -17,13 +98,13 @@ export default function NaghamApp() {
   
   const [progress, setProgress] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(200); // مدونة افتراضية مؤقتة لحد ما يشتغل
+  const [duration, setDuration] = useState(0);
   
   const [showAddModal, setShowAddModal] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [newSong, setNewSong] = useState({ title: '', artist: '', category: 'tarab', src: '' });
 
-  const timerRef = useRef(null);
+  const playerRef = useRef(null);
 
   useEffect(() => {
     fetchSongs();
@@ -44,56 +125,44 @@ export default function NaghamApp() {
     return matchesTab && matchesSearch;
   });
 
-  // محاكاة عداد الثواني بذكاء عشان يضبط مع المستخدم
-  useEffect(() => {
-    if (isPlaying) {
-      timerRef.current = setInterval(() => {
-        setCurrentTime(prev => {
-          if (prev >= duration) {
-            playNext();
-            return 0;
-          }
-          setProgress(((prev + 1) / duration) * 100);
-          return prev + 1;
-        });
-      }, 1000);
-    } else {
-      clearInterval(timerRef.current);
-    }
-    return () => clearInterval(timerRef.current);
-  }, [isPlaying, duration]);
-
   const selectSong = (song) => {
-    setCurrentSong(song);
-    setIsPlaying(true);
-    setCurrentTime(0);
-    setProgress(0);
+    if (currentSong?.id === song.id) {
+      togglePlay();
+    } else {
+      setCurrentSong(song);
+      setIsPlaying(true);
+    }
   };
 
-  const togglePlay = () => {
-    setIsPlaying(!isPlaying);
-  };
+  const togglePlay = () => setIsPlaying(!isPlaying);
 
   const playNext = () => {
     if (filteredSongs.length === 0) return;
     const currentIndex = filteredSongs.findIndex(s => s.id === currentSong?.id);
     const nextIndex = currentIndex === filteredSongs.length - 1 ? 0 : currentIndex + 1;
-    selectSong(filteredSongs[nextIndex]);
+    setCurrentSong(filteredSongs[nextIndex]);
+    setIsPlaying(true);
   };
 
   const playPrevious = () => {
     if (filteredSongs.length === 0) return;
     const currentIndex = filteredSongs.findIndex(s => s.id === currentSong?.id);
     const prevIndex = currentIndex === 0 ? filteredSongs.length - 1 : currentIndex - 1;
-    selectSong(filteredSongs[prevIndex]);
+    setCurrentSong(filteredSongs[prevIndex]);
+    setIsPlaying(true);
+  };
+
+  const handleProgress = (state) => {
+    setCurrentTime(state.playedSeconds);
+    setProgress(state.played * 100);
   };
 
   const handleSeekClick = (e) => {
+    if (!playerRef.current) return;
     const width = e.target.clientWidth;
     const clickX = e.nativeEvent.offsetX;
     const fraction = clickX / width;
-    const newTime = fraction * duration;
-    setCurrentTime(newTime);
+    playerRef.current.seekTo(fraction, 'fraction');
     setProgress(fraction * 100);
   };
 
@@ -104,37 +173,30 @@ export default function NaghamApp() {
     return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
   };
 
+  const getFixedUrl = (url) => {
+    if (!url) return '';
+    if (url.includes('youtube.com/embed/')) {
+      return `https://www.youtube.com/watch?v=${url.split('embed/')[1].split('?')[0]}`;
+    }
+    return url;
+  };
+
   const handleAddSong = async (e) => {
     e.preventDefault();
     if (!newSong.title || !newSong.src) return alert('يرجى كتابة الاسم ووضع رابط يوتيوب');
     
     setIsUploading(true);
-    let finalUrl = newSong.src;
+    const finalUrl = newSong.src; 
 
     try {
-      if (finalUrl.includes('watch?v=')) finalUrl = finalUrl.replace('watch?v=', 'embed/').split('&')[0];
-      else if (finalUrl.includes('youtu.be/')) finalUrl = finalUrl.replace('youtu.be/', 'www.youtube.com/embed/').split('?')[0];
-
-      // إضافة بارامترات لمنع ظهور فيديوهات مقترحة وإخفاء تفاصيل يوتيوب الزيادة
-      if (!finalUrl.includes('?')) finalUrl += '?';
-      finalUrl += '&autoplay=1&enablejsapi=1&controls=0&modestbranding=1';
-
-      const songData = {
-        title: newSong.title,
-        artist: newSong.artist || 'غير معروف',
-        category: newSong.category,
-        embed_url: finalUrl,
-      };
-
+      const songData = { title: newSong.title, artist: newSong.artist || 'غير معروف', category: newSong.category, embed_url: finalUrl };
       const { data: insertData, error: insertError } = await supabase.from('songs').insert([songData]).select();
       if (insertError) throw insertError;
 
-      const addedSong = { ...insertData[0], src: finalUrl };
-      setSongs([addedSong, ...songs]);
+      setSongs([{ ...insertData[0], src: finalUrl }, ...songs]);
       setNewSong({ title: '', artist: '', category: 'tarab', src: '' });
       setShowAddModal(false);
-      alert('تمت إضافة الأغنية بنجاح!');
-
+      alert('تمت الإضافة بنجاح!');
     } catch (error) {
       alert('حدث خطأ أثناء الإضافة');
     } finally {
@@ -142,18 +204,8 @@ export default function NaghamApp() {
     }
   };
 
-  // تعديل رابط الأغنية الحالية لو مش فيه بارامترات التشغيل
-  const getPlayableUrl = (url) => {
-    if (!url) return '';
-    let cleanUrl = url;
-    if (!cleanUrl.includes('autoplay=1')) {
-      cleanUrl += (cleanUrl.includes('?') ? '&' : '?') + 'autoplay=1&enablejsapi=1&controls=0';
-    }
-    if (isPlaying) {
-      return cleanUrl;
-    } else {
-      return cleanUrl.replace('autoplay=1', 'autoplay=0');
-    }
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
   };
 
   return (
@@ -176,12 +228,15 @@ export default function NaghamApp() {
               <button onClick={() => setActiveTab('quran')} className={activeTab === 'quran' ? 'text-emerald-600 font-bold' : 'hover:text-emerald-600'}>إسلاميات وقرآن</button>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
               <button onClick={() => setShowAddModal(true)} className="flex items-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-full text-sm font-bold shadow-md transition-all">
-                <Plus className="w-4 h-4" /> إضافة أغنية
+                <Plus className="w-4 h-4" /> إضافة
               </button>
               <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors">
                 {isDarkMode ? <Sun className="w-5 h-5 text-yellow-400" /> : <Moon className="w-5 h-5 text-slate-700" />}
+              </button>
+              <button onClick={handleLogout} className="p-2 rounded-full text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="تسجيل الخروج">
+                <LogOut className="w-5 h-5" />
               </button>
             </div>
           </div>
@@ -212,7 +267,6 @@ export default function NaghamApp() {
 
         <h2 className="text-2xl font-bold mb-4 dark:text-white">{searchQuery ? 'نتائج البحث' : 'قائمة التشغيل'}</h2>
 
-        {/* قائمة الأغاني الاحترافية */}
         <div className="space-y-3">
           {filteredSongs.length > 0 ? filteredSongs.map((song) => {
             const isSelected = currentSong?.id === song.id;
@@ -233,58 +287,48 @@ export default function NaghamApp() {
         </div>
       </main>
 
-      {/* مشغل يوتيوب المخفي في الخلفية (صوت فقط بدون شكل مرئي مزعج) */}
-      <div className="fixed bottom-24 left-4 w-72 h-40 bg-black rounded-xl overflow-hidden shadow-2xl z-40 hidden md:block opacity-90 border border-gray-700">
-        <div className="bg-gray-900 text-white text-xs px-3 py-1 flex justify-between items-center border-b border-gray-800">
-          <span>مشغل نَغَم الصوتي</span>
-          <span className="w-2 h-2 rounded-full bg-green-500 animate-ping"></span>
-        </div>
-        {currentSong && (
-          <iframe 
-            className="w-full h-full pointer-events-none" 
-            src={getPlayableUrl(currentSong.src)} 
-            title="audio-player" 
-            frameBorder="0" 
-            allow="autoplay"
-          ></iframe>
-        )}
-      </div>
-
       {showAddModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-white dark:bg-gray-900 rounded-3xl w-full max-w-lg p-8 relative shadow-2xl">
             <button onClick={() => setShowAddModal(false)} className="absolute top-6 left-6 text-gray-400 hover:text-gray-800"><X className="w-6 h-6" /></button>
-            <h2 className="text-2xl font-bold mb-6 dark:text-white">إضافة رابط يوتيوب</h2>
-
+            <h2 className="text-2xl font-bold mb-6 dark:text-white">إضافة أغنية</h2>
             <form onSubmit={handleAddSong} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">اسم الأغنية / التلاوة</label>
-                <input required type="text" value={newSong.title} onChange={e => setNewSong({...newSong, title: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">اسم الفنان / القارئ</label>
-                <input required type="text" value={newSong.artist} onChange={e => setNewSong({...newSong, artist: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">القسم</label>
-                <select value={newSong.category} onChange={e => setNewSong({...newSong, category: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white">
-                  <option value="tarab">طرب وبوب</option><option value="shaabi">شعبي ومهرجانات</option><option value="quran">إسلاميات وقرآن</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">رابط يوتيوب</label>
-                <input required type="url" value={newSong.src} onChange={e => setNewSong({...newSong, src: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-left" dir="ltr" placeholder="https://www.youtube.com/watch?v=..." />
-              </div>
-
-              <button type="submit" disabled={isUploading} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl mt-4 transition-colors disabled:opacity-50">
-                {isUploading ? 'جاري الإضافة...' : 'إضافة للمكتبة'}
-              </button>
+              <div><input required type="text" value={newSong.title} onChange={e => setNewSong({...newSong, title: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border rounded-xl px-4 py-3 outline-none dark:text-white" placeholder="الاسم" /></div>
+              <div><input required type="text" value={newSong.artist} onChange={e => setNewSong({...newSong, artist: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border rounded-xl px-4 py-3 outline-none dark:text-white" placeholder="الفنان" /></div>
+              <div><input required type="url" value={newSong.src} onChange={e => setNewSong({...newSong, src: e.target.value})} className="w-full bg-gray-50 dark:bg-gray-800 border rounded-xl px-4 py-3 outline-none dark:text-white text-left" dir="ltr" placeholder="رابط يوتيوب..." /></div>
+              <button type="submit" disabled={isUploading} className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl mt-4">إضافة للمكتبة</button>
             </form>
           </div>
         </div>
       )}
 
-      {/* شريط التشغيل السفلي الاحترافي */}
+      {/* الخدعة السحرية للموبايل: المشغل موجود في الشاشة وحجمه 10 بيكسل بس شفاف، فالموبايل بيشغله غصب عنه */}
+      <div style={{ position: 'fixed', bottom: '10px', right: '10px', width: '10px', height: '10px', opacity: 0.01, pointerEvents: 'none', zIndex: -10 }}>
+        {currentSong && (
+          <ReactPlayer
+            ref={playerRef}
+            url={getFixedUrl(currentSong.src)}
+            playing={isPlaying}
+            controls={false}
+            volume={1}
+            playsinline={true} // أهم سطر للموبايل (بيمنع الفيديو يفتح شاشة كاملة)
+            onProgress={handleProgress}
+            onDuration={handleDuration}
+            onEnded={playNext}
+            width="100%"
+            height="100%"
+            config={{
+              youtube: {
+                playerVars: { 
+                  playsinline: 1,
+                  origin: window.location.origin
+                }
+              }
+            }}
+          />
+        )}
+      </div>
+
       <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 shadow-[0_-10px_30px_rgba(0,0,0,0.1)] px-4 py-3 z-50 transition-colors">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center gap-4 md:gap-8">
           
@@ -321,7 +365,31 @@ export default function NaghamApp() {
           </div>
         </div>
       </div>
-
     </div>
   );
+}
+
+// ==========================================
+// 3. المكون الرئيسي (بيحدد نعرض تسجيل الدخول ولا التطبيق)
+// ==========================================
+export default function App() {
+  const [session, setSession] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50"><div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div></div>;
+
+  return session ? <MainApp /> : <AuthScreen setSession={setSession} />;
 }
