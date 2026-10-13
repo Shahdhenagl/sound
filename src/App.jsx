@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Pause, SkipForward, SkipBack, Volume2, Search, Plus, AudioLines, Heart, Sun, Moon, Music, X, Mic2, Radio, Book, LogOut, Lock } from 'lucide-react';
+import { Play, Pause, SkipForward, SkipBack, Volume2, Search, Plus, AudioLines, Heart, Sun, Moon, Music, X, Mic2, Radio, Book, LogOut, KeyRound } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import ReactPlayer from 'react-player';
 
@@ -8,38 +8,41 @@ const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // ==========================================
-// 1. واجهة الدخول (كلمة المرور فقط)
+// 1. واجهة الدخول (مربوطة بجدول access_codes)
 // ==========================================
 function AuthScreen({ setSession }) {
-  const [password, setPassword] = useState('');
-  const [isLogin, setIsLogin] = useState(true);
+  const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  const handleAuth = async (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    if (password.length < 6) {
-      return setErrorMsg('كلمة المرور يجب أن تكون 6 أرقام أو حروف على الأقل');
-    }
+    if (!code) return setErrorMsg('يرجى إدخال كود الدخول');
     
     setLoading(true);
     setErrorMsg('');
 
-    // الخدعة: تحويل الباسورد لإيميل وهمي في الخلفية
-    const fakeEmail = `${password}@nagham.com`;
-
     try {
-      if (isLogin) {
-        const { data, error } = await supabase.auth.signInWithPassword({ email: fakeEmail, password });
-        if (error) throw error;
-      } else {
-        const { data, error } = await supabase.auth.signUp({ email: fakeEmail, password });
-        if (error) throw error;
-        alert('تم إنشاء كود الدخول بنجاح! يمكنك الدخول الآن.');
-        setIsLogin(true);
+      // البحث عن الكود في جدول access_codes اللي إنت أنشأته
+      const { data, error } = await supabase
+        .from('access_codes')
+        .select('*')
+        .eq('code', code)
+        .single();
+
+      if (error || !data) {
+        throw new Error('الكود غير صحيح أو غير مسجل في النظام');
       }
+
+      // لو الكود موجود وصحيح، نحفظه في المتصفح وندخل العميل
+      localStorage.setItem('nagham_access_code', data.code);
+      setSession(data.code);
+
+      // (اختياري): تحديث حالة الكود لـ is_used = true 
+      await supabase.from('access_codes').update({ is_used: true }).eq('code', code);
+
     } catch (error) {
-      setErrorMsg('كود الدخول غير صحيح، أو تم استخدامه مسبقاً');
+      setErrorMsg(error.message);
     } finally {
       setLoading(false);
     }
@@ -57,35 +60,28 @@ function AuthScreen({ setSession }) {
         
         {errorMsg && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-4 border border-red-200 text-center">{errorMsg}</div>}
 
-        <form onSubmit={handleAuth} className="space-y-5">
+        <form onSubmit={handleLogin} className="space-y-5">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 text-center">
-              {isLogin ? 'أدخل كود الدخول الخاص بك' : 'قم بإنشاء كود دخول جديد (6 أرقام على الأقل)'}
+              أدخل كود المرور الخاص بك
             </label>
             <div className="relative">
-              <Lock className="absolute right-4 top-1/2 -translate-y-1/2 w-6 h-6 text-gray-400" />
+              <KeyRound className="absolute right-4 top-1/2 -translate-y-1/2 w-6 h-6 text-gray-400" />
               <input 
                 required 
-                type="password" 
-                value={password} 
-                onChange={e => setPassword(e.target.value)} 
-                className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl pr-12 pl-4 py-4 outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-xl text-center tracking-widest" 
+                type="text" 
+                value={code} 
+                onChange={e => setCode(e.target.value)} 
+                className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl pr-12 pl-4 py-4 outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-xl text-center tracking-widest uppercase" 
                 dir="ltr" 
-                placeholder="••••••••" 
-                minLength={6} 
+                placeholder="NAGHAM-123" 
               />
             </div>
           </div>
           <button type="submit" disabled={loading} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl transition-all shadow-md disabled:opacity-50 text-lg">
-            {loading ? 'جاري التحميل...' : (isLogin ? 'دخول للمنصة' : 'إنشاء وتأكيد')}
+            {loading ? 'جاري التحقق...' : 'دخول للمنصة'}
           </button>
         </form>
-
-        <div className="mt-6 text-center">
-          <button onClick={() => { setIsLogin(!isLogin); setErrorMsg(''); setPassword(''); }} className="text-indigo-600 dark:text-indigo-400 font-medium hover:underline">
-            {isLogin ? 'لا تملك كود دخول؟ أنشئ واحداً الآن' : 'لديك كود بالفعل؟ ادخل من هنا'}
-          </button>
-        </div>
       </div>
     </div>
   );
@@ -94,7 +90,7 @@ function AuthScreen({ setSession }) {
 // ==========================================
 // 2. واجهة التطبيق الرئيسية 
 // ==========================================
-function MainApp() {
+function MainApp({ setSession }) {
   const [activeTab, setActiveTab] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -215,8 +211,10 @@ function MainApp() {
     }
   };
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
+  // دالة تسجيل الخروج الجديدة (بتمسح الكود من المتصفح)
+  const handleLogout = () => {
+    localStorage.removeItem('nagham_access_code');
+    setSession(null);
   };
 
   return (
@@ -313,7 +311,7 @@ function MainApp() {
         </div>
       )}
 
-      {/* الخدعة السحرية للموبايل: المشغل موجود في الشاشة وحجمه 10 بيكسل بس شفاف */}
+      {/* خدعة يوتيوب للموبايل */}
       <div style={{ position: 'fixed', bottom: '10px', right: '10px', width: '10px', height: '10px', opacity: 0.01, pointerEvents: 'none', zIndex: -10 }}>
         {currentSong && (
           <ReactPlayer
@@ -381,26 +379,22 @@ function MainApp() {
 }
 
 // ==========================================
-// 3. المكون الرئيسي (بيحدد نعرض تسجيل الدخول ولا التطبيق)
+// 3. المكون الرئيسي (بيقرأ من المتصفح مباشرة)
 // ==========================================
 export default function App() {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setLoading(false);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-
-    return () => subscription.unsubscribe();
+    // التحقق هل الكود محفوظ في المتصفح ولا لأ
+    const savedCode = localStorage.getItem('nagham_access_code');
+    if (savedCode) {
+      setSession(savedCode);
+    }
+    setLoading(false);
   }, []);
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-gray-50"><div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div></div>;
 
-  return session ? <MainApp /> : <AuthScreen setSession={setSession} />;
+  return session ? <MainApp setSession={setSession} /> : <AuthScreen setSession={setSession} />;
 }
