@@ -1,14 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Play, Pause, SkipForward, SkipBack, Volume2, Search, Plus, AudioLines, Heart, Sun, Moon, Music, X, Mic2, Radio, Book, LogOut, KeyRound } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
-import ReactPlayer from 'react-player';
 
+// بيانات الربط بـ Supabase
 const supabaseUrl = 'https://gsuntpgcmthruapyhidd.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdzdW50cGdjbXRocnVhcHloaWRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE4Mzc2ODQsImV4cCI6MjEwNzQxMzY4NH0.IK3kVIwVtsXjFGJtZPejD6gGj47RKN8-1E-c6ThIDHQ';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // ==========================================
-// 1. واجهة الدخول (بالكود فقط)
+// 1. واجهة الدخول (بالكود فقط من الداتا بيز)
 // ==========================================
 function AuthScreen({ setSession }) {
   const [code, setCode] = useState('');
@@ -35,6 +35,8 @@ function AuthScreen({ setSession }) {
 
       localStorage.setItem('nagham_access_code', data.code);
       setSession(data.code);
+
+      // تحديث حالة الكود
       await supabase.from('access_codes').update({ is_used: true }).eq('code', code);
 
     } catch (error) {
@@ -74,7 +76,7 @@ function AuthScreen({ setSession }) {
 }
 
 // ==========================================
-// 2. التطبيق الأساسي (نسختك المفضلة + المشغل الحقيقي)
+// 2. التطبيق الأساسي (النسخة الخاصة بك)
 // ==========================================
 function MainApp({ setSession }) {
   const [activeTab, setActiveTab] = useState('all');
@@ -87,13 +89,13 @@ function MainApp({ setSession }) {
   
   const [progress, setProgress] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0); 
+  const [duration, setDuration] = useState(200);
   
   const [showAddModal, setShowAddModal] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [newSong, setNewSong] = useState({ title: '', artist: '', category: 'tarab', src: '' });
 
-  const playerRef = useRef(null);
+  const timerRef = useRef(null);
 
   useEffect(() => {
     fetchSongs();
@@ -114,12 +116,35 @@ function MainApp({ setSession }) {
     return matchesTab && matchesSearch;
   });
 
+  // محاكاة عداد الثواني (نفس نسختك بالظبط)
+  useEffect(() => {
+    if (isPlaying) {
+      timerRef.current = setInterval(() => {
+        setCurrentTime(prev => {
+          if (prev >= duration) {
+            playNext();
+            return 0;
+          }
+          setProgress(((prev + 1) / duration) * 100);
+          return prev + 1;
+        });
+      }, 1000);
+    } else {
+      clearInterval(timerRef.current);
+    }
+    return () => clearInterval(timerRef.current);
+  }, [isPlaying, duration]);
+
   const selectSong = (song) => {
     setCurrentSong(song);
     setIsPlaying(true);
+    setCurrentTime(0);
+    setProgress(0);
   };
 
-  const togglePlay = () => setIsPlaying(!isPlaying);
+  const togglePlay = () => {
+    setIsPlaying(!isPlaying);
+  };
 
   const playNext = () => {
     if (filteredSongs.length === 0) return;
@@ -136,37 +161,19 @@ function MainApp({ setSession }) {
   };
 
   const handleSeekClick = (e) => {
-    if (!playerRef.current || duration === 0) return;
     const width = e.target.clientWidth;
     const clickX = e.nativeEvent.offsetX;
     const fraction = clickX / width;
-    playerRef.current.seekTo(fraction, 'fraction');
+    const newTime = fraction * duration;
+    setCurrentTime(newTime);
     setProgress(fraction * 100);
   };
 
-  const handleProgress = (state) => {
-    setCurrentTime(state.playedSeconds);
-    setProgress(state.played * 100);
-  };
-
-  const handleDuration = (dur) => {
-    setDuration(dur);
-  };
-
   const formatTime = (time) => {
-    if (isNaN(time) || time === 0) return "0:00";
+    if (isNaN(time)) return "0:00";
     const minutes = Math.floor(time / 60);
     const seconds = Math.floor(time % 60);
     return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
-  };
-
-  // دالة لإصلاح الروابط القديمة من قاعدة البيانات
-  const getFixedUrl = (url) => {
-    if (!url) return '';
-    if (url.includes('youtube.com/embed/')) {
-      return `https://www.youtube.com/watch?v=${url.split('embed/')[1].split('?')[0]}`;
-    }
-    return url;
   };
 
   const handleAddSong = async (e) => {
@@ -174,9 +181,15 @@ function MainApp({ setSession }) {
     if (!newSong.title || !newSong.src) return alert('يرجى كتابة الاسم ووضع رابط يوتيوب');
     
     setIsUploading(true);
-    const finalUrl = newSong.src; 
+    let finalUrl = newSong.src;
 
     try {
+      if (finalUrl.includes('watch?v=')) finalUrl = finalUrl.replace('watch?v=', 'embed/').split('&')[0];
+      else if (finalUrl.includes('youtu.be/')) finalUrl = finalUrl.replace('youtu.be/', 'www.youtube.com/embed/').split('?')[0];
+
+      if (!finalUrl.includes('?')) finalUrl += '?';
+      finalUrl += '&autoplay=1&enablejsapi=1&controls=0&modestbranding=1';
+
       const songData = {
         title: newSong.title,
         artist: newSong.artist || 'غير معروف',
@@ -192,6 +205,7 @@ function MainApp({ setSession }) {
       setNewSong({ title: '', artist: '', category: 'tarab', src: '' });
       setShowAddModal(false);
       alert('تمت إضافة الأغنية بنجاح!');
+
     } catch (error) {
       alert('حدث خطأ أثناء الإضافة');
     } finally {
@@ -199,6 +213,20 @@ function MainApp({ setSession }) {
     }
   };
 
+  const getPlayableUrl = (url) => {
+    if (!url) return '';
+    let cleanUrl = url;
+    if (!cleanUrl.includes('autoplay=1')) {
+      cleanUrl += (cleanUrl.includes('?') ? '&' : '?') + 'autoplay=1&enablejsapi=1&controls=0';
+    }
+    if (isPlaying) {
+      return cleanUrl;
+    } else {
+      return cleanUrl.replace('autoplay=1', 'autoplay=0');
+    }
+  };
+
+  // دالة تسجيل الخروج الجديدة
   const handleLogout = () => {
     localStorage.removeItem('nagham_access_code');
     setSession(null);
@@ -284,37 +312,25 @@ function MainApp({ setSession }) {
       </main>
 
       {/* 
-        هنا الخدعة للموبايل: 
-        المشغل مش hidden خالص، بل موجود شفاف جداً (opacity-[0.01]) عشان الموبايل يشغله غصب عنه 
+        هنا حل الموبايل: 
+        1. شلت كلاس 'hidden md:block' فبقى بيظهر على التليفون كمان.
+        2. خليت الـ opacity بتاعته 5% على التليفون (يعني عينك مش هتشوفه، بس متصفح التليفون هيشوفه وهيوافق يطلع الصوت).
+        3. على الديسكتوب (md) هيفضل يظهر بحجمه الطبيعي وشكله الـ 90% زي ما كنت عاوزه.
       */}
-      <div className="fixed bottom-24 left-4 w-4 h-4 md:w-72 md:h-40 bg-black md:rounded-xl overflow-hidden md:shadow-2xl z-40 opacity-[0.01] md:opacity-90 md:border md:border-gray-700 pointer-events-none">
+      <div className="fixed bottom-24 left-4 w-24 h-24 md:w-72 md:h-40 bg-black md:rounded-xl overflow-hidden md:shadow-2xl z-40 opacity-5 md:opacity-90 border-transparent md:border-gray-700 pointer-events-none">
         <div className="hidden md:flex bg-gray-900 text-white text-xs px-3 py-1 justify-between items-center border-b border-gray-800">
           <span>مشغل نَغَم الصوتي</span>
           <span className="w-2 h-2 rounded-full bg-green-500 animate-ping"></span>
         </div>
-        <ReactPlayer
-          ref={playerRef}
-          url={currentSong ? getFixedUrl(currentSong.src) : ''}
-          playing={isPlaying}
-          controls={false}
-          volume={1}
-          muted={false}
-          playsinline={true}
-          width="100%"
-          height="100%"
-          onProgress={handleProgress}
-          onDuration={handleDuration}
-          onEnded={playNext}
-          config={{
-            youtube: {
-              playerVars: { 
-                playsinline: 1, 
-                disablekb: 1, 
-                origin: typeof window !== 'undefined' ? window.location.origin : '' 
-              }
-            }
-          }}
-        />
+        {currentSong && (
+          <iframe 
+            className="w-full h-full pointer-events-none" 
+            src={getPlayableUrl(currentSong.src)} 
+            title="audio-player" 
+            frameBorder="0" 
+            allow="autoplay; encrypted-media"
+          ></iframe>
+        )}
       </div>
 
       {showAddModal && (
@@ -400,6 +416,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // جلب الكود من المتصفح لو مسجل من قبل
     const savedCode = localStorage.getItem('nagham_access_code');
     if (savedCode) {
       setSession(savedCode);
