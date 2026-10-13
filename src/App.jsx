@@ -1,18 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Pause, SkipForward, SkipBack, Volume2, Search, Plus, AudioLines, Heart, Sun, Moon, Music, X, Mic2, Radio, Book, LogOut, Mail, Lock } from 'lucide-react';
+import { Play, Pause, SkipForward, SkipBack, Volume2, Search, Plus, AudioLines, Heart, Sun, Moon, Music, X, Mic2, Radio, Book, LogOut, Lock } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import ReactPlayer from 'react-player';
 
-// بيانات الربط بـ Supabase
 const supabaseUrl = 'https://gsuntpgcmthruapyhidd.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdzdW50cGdjbXRocnVhcHloaWRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE4Mzc2ODQsImV4cCI6MjEwNzQxMzY4NH0.IK3kVIwVtsXjFGJtZPejD6gGj47RKN8-1E-c6ThIDHQ';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // ==========================================
-// 1. واجهة تسجيل الدخول وإنشاء الحساب
+// 1. واجهة الدخول (كلمة المرور فقط)
 // ==========================================
 function AuthScreen({ setSession }) {
-  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -20,23 +18,28 @@ function AuthScreen({ setSession }) {
 
   const handleAuth = async (e) => {
     e.preventDefault();
+    if (password.length < 6) {
+      return setErrorMsg('كلمة المرور يجب أن تكون 6 أرقام أو حروف على الأقل');
+    }
+    
     setLoading(true);
     setErrorMsg('');
 
+    // الخدعة: تحويل الباسورد لإيميل وهمي في الخلفية
+    const fakeEmail = `${password}@nagham.com`;
+
     try {
       if (isLogin) {
-        // تسجيل دخول
-        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        const { data, error } = await supabase.auth.signInWithPassword({ email: fakeEmail, password });
         if (error) throw error;
       } else {
-        // حساب جديد
-        const { data, error } = await supabase.auth.signUp({ email, password });
+        const { data, error } = await supabase.auth.signUp({ email: fakeEmail, password });
         if (error) throw error;
-        alert('تم إنشاء الحساب بنجاح! يمكنك الآن تسجيل الدخول.');
+        alert('تم إنشاء كود الدخول بنجاح! يمكنك الدخول الآن.');
         setIsLogin(true);
       }
     } catch (error) {
-      setErrorMsg(error.message === 'Invalid login credentials' ? 'البريد أو كلمة المرور غير صحيحة' : error.message);
+      setErrorMsg('كود الدخول غير صحيح، أو تم استخدامه مسبقاً');
     } finally {
       setLoading(false);
     }
@@ -52,31 +55,35 @@ function AuthScreen({ setSession }) {
         </div>
         <h2 className="text-3xl font-extrabold text-center mb-8 dark:text-white bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">منصة نَغَم</h2>
         
-        {errorMsg && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-4 border border-red-200">{errorMsg}</div>}
+        {errorMsg && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm mb-4 border border-red-200 text-center">{errorMsg}</div>}
 
         <form onSubmit={handleAuth} className="space-y-5">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">البريد الإلكتروني</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 text-center">
+              {isLogin ? 'أدخل كود الدخول الخاص بك' : 'قم بإنشاء كود دخول جديد (6 أرقام على الأقل)'}
+            </label>
             <div className="relative">
-              <Mail className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input required type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl pr-10 pl-4 py-3 outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white" dir="ltr" placeholder="test@nagham.com" />
+              <Lock className="absolute right-4 top-1/2 -translate-y-1/2 w-6 h-6 text-gray-400" />
+              <input 
+                required 
+                type="password" 
+                value={password} 
+                onChange={e => setPassword(e.target.value)} 
+                className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl pr-12 pl-4 py-4 outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white text-xl text-center tracking-widest" 
+                dir="ltr" 
+                placeholder="••••••••" 
+                minLength={6} 
+              />
             </div>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">كلمة المرور</label>
-            <div className="relative">
-              <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input required type="password" value={password} onChange={e => setPassword(e.target.value)} className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl pr-10 pl-4 py-3 outline-none focus:ring-2 focus:ring-indigo-500 dark:text-white" dir="ltr" placeholder="••••••••" minLength={6} />
-            </div>
-          </div>
-          <button type="submit" disabled={loading} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition-all shadow-md disabled:opacity-50">
-            {loading ? 'جاري التحميل...' : (isLogin ? 'دخول' : 'إنشاء حساب جديد')}
+          <button type="submit" disabled={loading} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl transition-all shadow-md disabled:opacity-50 text-lg">
+            {loading ? 'جاري التحميل...' : (isLogin ? 'دخول للمنصة' : 'إنشاء وتأكيد')}
           </button>
         </form>
 
         <div className="mt-6 text-center">
-          <button onClick={() => setIsLogin(!isLogin)} className="text-indigo-600 dark:text-indigo-400 font-medium hover:underline">
-            {isLogin ? 'لا تملك حساباً؟ سجل الآن' : 'لديك حساب بالفعل؟ سجل دخولك'}
+          <button onClick={() => { setIsLogin(!isLogin); setErrorMsg(''); setPassword(''); }} className="text-indigo-600 dark:text-indigo-400 font-medium hover:underline">
+            {isLogin ? 'لا تملك كود دخول؟ أنشئ واحداً الآن' : 'لديك كود بالفعل؟ ادخل من هنا'}
           </button>
         </div>
       </div>
@@ -85,7 +92,7 @@ function AuthScreen({ setSession }) {
 }
 
 // ==========================================
-// 2. واجهة التطبيق الرئيسية (تظهر بعد الدخول)
+// 2. واجهة التطبيق الرئيسية 
 // ==========================================
 function MainApp() {
   const [activeTab, setActiveTab] = useState('all');
@@ -155,6 +162,10 @@ function MainApp() {
   const handleProgress = (state) => {
     setCurrentTime(state.playedSeconds);
     setProgress(state.played * 100);
+  };
+
+  const handleDuration = (dur) => {
+    setDuration(dur);
   };
 
   const handleSeekClick = (e) => {
@@ -302,7 +313,7 @@ function MainApp() {
         </div>
       )}
 
-      {/* الخدعة السحرية للموبايل: المشغل موجود في الشاشة وحجمه 10 بيكسل بس شفاف، فالموبايل بيشغله غصب عنه */}
+      {/* الخدعة السحرية للموبايل: المشغل موجود في الشاشة وحجمه 10 بيكسل بس شفاف */}
       <div style={{ position: 'fixed', bottom: '10px', right: '10px', width: '10px', height: '10px', opacity: 0.01, pointerEvents: 'none', zIndex: -10 }}>
         {currentSong && (
           <ReactPlayer
@@ -311,7 +322,7 @@ function MainApp() {
             playing={isPlaying}
             controls={false}
             volume={1}
-            playsinline={true} // أهم سطر للموبايل (بيمنع الفيديو يفتح شاشة كاملة)
+            playsinline={true} 
             onProgress={handleProgress}
             onDuration={handleDuration}
             onEnded={playNext}
