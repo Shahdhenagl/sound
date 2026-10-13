@@ -75,6 +75,25 @@ function AuthScreen({ setSession }) {
   );
 }
 
+// استخراج معرّف الفيديو من روابط YouTube العادية أو embed أو youtu.be
+function getYouTubeVideoId(rawUrl) {
+  if (!rawUrl) return null;
+  try {
+    const url = new URL(rawUrl, window.location.origin);
+    const host = url.hostname.replace(/^www\./, '');
+    if (host === 'youtu.be') return url.pathname.split('/').filter(Boolean)[0] || null;
+    if (host.endsWith('youtube.com') || host === 'youtube-nocookie.com') {
+      if (url.searchParams.get('v')) return url.searchParams.get('v');
+      const parts = url.pathname.split('/').filter(Boolean);
+      const marker = parts.findIndex(part => ['embed', 'shorts', 'live', 'v'].includes(part));
+      if (marker >= 0) return parts[marker + 1] || null;
+    }
+  } catch (error) {
+    console.error('تعذر قراءة رابط YouTube:', error);
+  }
+  return null;
+}
+
 // ==========================================
 // 2. التطبيق الأساسي (النسخة الخاصة بك)
 // ==========================================
@@ -95,11 +114,112 @@ function MainApp({ setSession }) {
   const [isUploading, setIsUploading] = useState(false);
   const [newSong, setNewSong] = useState({ title: '', artist: '', category: 'tarab', src: '' });
 
-  const timerRef = useRef(null);
+  const playerRef = useRef(null);
+  const playerHostRef = useRef(null);
+  const nextSongRef = useRef(null);
+  const [youtubeApiReady, setYoutubeApiReady] = useState(false);
+  const [playerReady, setPlayerReady] = useState(false);
+
+  // تحميل YouTube IFrame Player API مرة واحدة
+  useEffect(() => {
+    if (window.YT && window.YT.Player) {
+      setYoutubeApiReady(true);
+      return;
+    }
+
+    const existingScript = document.querySelector('script[src="https://www.youtube.com/iframe_api"]');
+    const previousCallback = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => {
+      if (typeof previousCallback === 'function') previousCallback();
+      setYoutubeApiReady(true);
+    };
+
+    if (!existingScript) {
+      const script = document.createElement('script');
+      script.src = 'https://www.youtube.com/iframe_api';
+      script.async = true;
+      document.head.appendChild(script);
+    }
+
+    return () => {
+      // لا نحذف سكربت YouTube لأنه مورد مشترك في الصفحة
+    };
+  }, []);
 
   useEffect(() => {
     fetchSongs();
   }, []);
+
+  // إنشاء مشغل YouTube مرة واحدة والتحكم فيه من خلال الـ API
+  useEffect(() => {
+    if (!youtubeApiReady || !playerHostRef.current || playerRef.current) return;
+
+    playerRef.current = new window.YT.Player(playerHostRef.current, {
+      width: '100%',
+      height: '100%',
+      playerVars: {
+        autoplay: 0,
+        controls: 1,
+        playsinline: 1,
+        rel: 0,
+        origin: window.location.origin
+      },
+      events: {
+        onReady: () => setPlayerReady(true),
+        onStateChange: (event) => {
+          const YT = window.YT;
+          if (event.data === YT.PlayerState.PLAYING) setIsPlaying(true);
+          if (event.data === YT.PlayerState.PAUSED || event.data === YT.PlayerState.CUED) setIsPlaying(false);
+          if (event.data === YT.PlayerState.ENDED) {
+            setIsPlaying(false);
+            if (nextSongRef.current) nextSongRef.current();
+          }
+        },
+        onError: (event) => {
+          console.error('YouTube Player error:', event.data);
+          setIsPlaying(false);
+        }
+      }
+    });
+  }, [youtubeApiReady]);
+
+  // تحميل الأغنية المختارة دون إعادة إنشاء الـ iframe
+  useEffect(() => {
+    if (!playerReady || !currentSong?.src || !playerRef.current) return;
+    const videoId = getYouTubeVideoId(currentSong.src);
+    if (!videoId) {
+      console.error('رابط YouTube غير صالح:', currentSong.src);
+      return;
+    }
+    if (isPlaying) playerRef.current.loadVideoById(videoId);
+    else playerRef.current.cueVideoById(videoId);
+    setCurrentTime(0);
+    setProgress(0);
+  }, [currentSong?.src, playerReady]);
+
+  // زر التشغيل والإيقاف يتحكمان في المشغل الفعلي
+  useEffect(() => {
+    if (!playerReady || !playerRef.current) return;
+    if (isPlaying) playerRef.current.playVideo();
+    else playerRef.current.pauseVideo();
+  }, [isPlaying, playerReady]);
+
+  // مزامنة الوقت والمدة مع YouTube بدل عداد الثواني الوهمي
+  useEffect(() => {
+    if (!isPlaying || !playerReady) return;
+    const timer = setInterval(() => {
+      const player = playerRef.current;
+      if (!player) return;
+      const actualDuration = player.getDuration?.() || 0;
+      const actualTime = player.getCurrentTime?.() || 0;
+      if (actualDuration > 0) {
+        setDuration(actualDuration);
+        setCurrentTime(actualTime);
+        setProgress((actualTime / actualDuration) * 100);
+      }
+    }, 500);
+    return () => clearInterval(timer);
+  }, [isPlaying, playerReady]);
 
   const fetchSongs = async () => {
     const { data, error } = await supabase.from('songs').select('*').order('created_at', { ascending: false });
@@ -116,25 +236,6 @@ function MainApp({ setSession }) {
     return matchesTab && matchesSearch;
   });
 
-  // محاكاة عداد الثواني (نفس نسختك بالظبط)
-  useEffect(() => {
-    if (isPlaying) {
-      timerRef.current = setInterval(() => {
-        setCurrentTime(prev => {
-          if (prev >= duration) {
-            playNext();
-            return 0;
-          }
-          setProgress(((prev + 1) / duration) * 100);
-          return prev + 1;
-        });
-      }, 1000);
-    } else {
-      clearInterval(timerRef.current);
-    }
-    return () => clearInterval(timerRef.current);
-  }, [isPlaying, duration]);
-
   const selectSong = (song) => {
     setCurrentSong(song);
     setIsPlaying(true);
@@ -143,7 +244,11 @@ function MainApp({ setSession }) {
   };
 
   const togglePlay = () => {
-    setIsPlaying(!isPlaying);
+    // مهم للموبايل: هذا الأمر يحدث مباشرة نتيجة ضغطة المستخدم
+    const player = playerRef.current;
+    if (!playerReady || !player) return;
+    if (isPlaying) player.pauseVideo();
+    else player.playVideo();
   };
 
   const playNext = () => {
@@ -156,15 +261,21 @@ function MainApp({ setSession }) {
   const playPrevious = () => {
     if (filteredSongs.length === 0) return;
     const currentIndex = filteredSongs.findIndex(s => s.id === currentSong?.id);
-    const prevIndex = currentIndex === 0 ? filteredSongs.length - 1 : currentIndex - 1;
+    const prevIndex = currentIndex <= 0 ? filteredSongs.length - 1 : currentIndex - 1;
     selectSong(filteredSongs[prevIndex]);
   };
 
+  useEffect(() => {
+    nextSongRef.current = playNext;
+  });
+
   const handleSeekClick = (e) => {
-    const width = e.target.clientWidth;
-    const clickX = e.nativeEvent.offsetX;
-    const fraction = clickX / width;
+    const player = playerRef.current;
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (!playerReady || !player || !duration || !rect.width) return;
+    const fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     const newTime = fraction * duration;
+    player.seekTo(newTime, true);
     setCurrentTime(newTime);
     setProgress(fraction * 100);
   };
@@ -184,11 +295,9 @@ function MainApp({ setSession }) {
     let finalUrl = newSong.src;
 
     try {
-      if (finalUrl.includes('watch?v=')) finalUrl = finalUrl.replace('watch?v=', 'embed/').split('&')[0];
-      else if (finalUrl.includes('youtu.be/')) finalUrl = finalUrl.replace('youtu.be/', 'www.youtube.com/embed/').split('?')[0];
-
-      if (!finalUrl.includes('?')) finalUrl += '?';
-      finalUrl += '&autoplay=1&enablejsapi=1&controls=0&modestbranding=1';
+      const videoId = getYouTubeVideoId(finalUrl);
+      if (!videoId) throw new Error('رابط YouTube غير صالح');
+      finalUrl = `https://www.youtube.com/embed/${videoId}`;
 
       const songData = {
         title: newSong.title,
@@ -210,19 +319,6 @@ function MainApp({ setSession }) {
       alert('حدث خطأ أثناء الإضافة');
     } finally {
       setIsUploading(false);
-    }
-  };
-
-  const getPlayableUrl = (url) => {
-    if (!url) return '';
-    let cleanUrl = url;
-    if (!cleanUrl.includes('autoplay=1')) {
-      cleanUrl += (cleanUrl.includes('?') ? '&' : '?') + 'autoplay=1&enablejsapi=1&controls=0';
-    }
-    if (isPlaying) {
-      return cleanUrl;
-    } else {
-      return cleanUrl.replace('autoplay=1', 'autoplay=0');
     }
   };
 
@@ -311,26 +407,13 @@ function MainApp({ setSession }) {
         </div>
       </main>
 
-      {/* 
-        هنا حل الموبايل: 
-        1. شلت كلاس 'hidden md:block' فبقى بيظهر على التليفون كمان.
-        2. خليت الـ opacity بتاعته 5% على التليفون (يعني عينك مش هتشوفه، بس متصفح التليفون هيشوفه وهيوافق يطلع الصوت).
-        3. على الديسكتوب (md) هيفضل يظهر بحجمه الطبيعي وشكله الـ 90% زي ما كنت عاوزه.
-      */}
-      <div className="fixed bottom-24 left-4 w-24 h-24 md:w-72 md:h-40 bg-black md:rounded-xl overflow-hidden md:shadow-2xl z-40 opacity-5 md:opacity-90 border-transparent md:border-gray-700 pointer-events-none">
-        <div className="hidden md:flex bg-gray-900 text-white text-xs px-3 py-1 justify-between items-center border-b border-gray-800">
-          <span>مشغل نَغَم الصوتي</span>
-          <span className="w-2 h-2 rounded-full bg-green-500 animate-ping"></span>
+      {/* مشغل YouTube ظاهر وقابل للتفاعل؛ الإخفاء الشديد قد يعطل التشغيل على الموبايل */}
+      <div className="fixed bottom-24 left-4 z-40 w-[200px] h-[232px] rounded-xl overflow-hidden bg-black shadow-2xl border border-gray-700">
+        <div className="bg-gray-900 text-white text-xs px-3 py-2 flex justify-between items-center">
+          <span>مشغل نَغَم</span>
+          <span className={`w-2 h-2 rounded-full ${isPlaying ? 'bg-green-500' : 'bg-gray-500'}`}></span>
         </div>
-        {currentSong && (
-          <iframe 
-            className="w-full h-full pointer-events-none" 
-            src={getPlayableUrl(currentSong.src)} 
-            title="audio-player" 
-            frameBorder="0" 
-            allow="autoplay; encrypted-media"
-          ></iframe>
-        )}
+        <div ref={playerHostRef} className="w-full h-[200px]" />
       </div>
 
       {showAddModal && (
@@ -392,7 +475,7 @@ function MainApp({ setSession }) {
             
             <div className="flex items-center w-full gap-3 text-xs text-gray-500 dark:text-gray-400 font-medium font-mono">
               <span>{formatTime(currentTime)}</span>
-              <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full cursor-pointer relative overflow-hidden group" onClick={handleSeekClick}>
+              <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full cursor-pointer relative overflow-hidden group" onClick={handleSeekClick} role="slider" aria-label="تقديم أو تأخير الأغنية" aria-valuemin={0} aria-valuemax={duration} aria-valuenow={currentTime}>
                 <div className="absolute top-0 left-0 h-full bg-indigo-600 dark:bg-indigo-500 rounded-full group-hover:bg-indigo-400 transition-colors pointer-events-none" style={{ width: `${progress}%`, right: 0, left: 'auto' }}></div>
               </div>
               <span>{formatTime(duration)}</span>
